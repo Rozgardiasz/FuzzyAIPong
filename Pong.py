@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Based on https://python101.readthedocs.io/pl/latest/pygame/pong/#
+import numpy as np
 import pygame
 from typing import Type
 import skfuzzy as fuzz
@@ -227,6 +228,9 @@ class HumanPlayer(Player):
 # DO NOT MODIFY CODE ABOVE THIS LINE
 # ----------------------------------
 
+
+
+
 # import numpy as np
 # import matplotlib.pyplot as plt
 
@@ -269,6 +273,35 @@ class FuzzyPlayer(Player):
         # plt.show()
         # ...
 
+        corner_width = (racket.rect.width/4)
+        velocity_speed = 15
+
+        x_dist = fuzzcontrol.Antecedent( universe=np.arange(-800, 801),label="distanceX",)
+        y_dist = fuzzcontrol.Antecedent(universe=np.arange(0, 401),label="distanceY",)
+        movement = fuzzcontrol.Consequent(universe=np.arange(-velocity_speed, velocity_speed + 1), label="movement", )
+
+        x_dist["far_left"] = fuzz.trimf(x_dist.universe, [-800, -800, -corner_width])
+        x_dist["left"] = fuzz.trimf(x_dist.universe, [-400, -400, -corner_width])
+        x_dist["center"] = fuzz.trimf(x_dist.universe, [-800, 0, 800])
+        x_dist["right"] = fuzz.trimf(x_dist.universe, [corner_width, 800, 800])
+        x_dist["far_right"] = fuzz.trimf(x_dist.universe, [corner_width, 400, 400])
+
+        y_dist["far"] = fuzz.trimf(y_dist.universe, [200, 400, 400])
+        y_dist["mid"] = fuzz.trimf(y_dist.universe,[0, 200, 400],)
+        y_dist["close"] = fuzz.trimf(y_dist.universe,[0, 0, 200],)
+
+        movement["left"] = fuzz.trimf(movement.universe, [-velocity_speed, -velocity_speed, 0])
+        movement["stay"] = fuzz.trimf(movement.universe, [-velocity_speed, 0, velocity_speed])
+        movement["right"] = fuzz.trimf(movement.universe, [0, velocity_speed, velocity_speed])
+
+        rule_far_left = fuzzcontrol.Rule(x_dist["far_left"] & (y_dist["close"] | y_dist["mid"] | y_dist["far"]), movement["left"])
+        rule_left = fuzzcontrol.Rule(x_dist["left"] & (y_dist["close"] | y_dist["mid"] | y_dist["far"]), movement["left"])
+        rule_center = fuzzcontrol.Rule(x_dist["center"] & (y_dist["close"] | y_dist["mid"] | y_dist["far"]), movement["stay"])
+        rule_right = fuzzcontrol.Rule(x_dist["right"] & (y_dist["close"] | y_dist["mid"] | y_dist["far"]), movement["right"])
+        rule_far_right = fuzzcontrol.Rule(x_dist["far_right"] & (y_dist["close"] | y_dist["mid"] | y_dist["far"]), movement["right"])
+
+        self.controller = fuzzcontrol.ControlSystemSimulation(fuzzcontrol.ControlSystem([rule_far_left, rule_left, rule_center, rule_right, rule_far_right]))
+
     def act(self, x_diff: int, y_diff: int):
         velocity = self.make_decision(x_diff, y_diff)
         self.move(self.racket.rect.x + velocity)
@@ -300,10 +333,15 @@ class FuzzyPlayer(Player):
         #     for val in activations
         # ) / sum(activations[val] for val in activations)
 
-        return 0
+        self.controller.input['distanceX'] = -x_diff
+        self.controller.input['distanceY'] = y_diff
+
+        self.controller.compute()
+
+        return self.controller.output['movement'] * 250
 
 
 if __name__ == "__main__":
-    game = PongGame(800, 400, NaiveOponent, HumanPlayer)
-    # game = PongGame(800, 400, NaiveOponent, FuzzyPlayer)
+    #game = PongGame(800, 400, NaiveOponent, HumanPlayer)
+    game = PongGame(800, 400, NaiveOponent, FuzzyPlayer)
     game.run()
